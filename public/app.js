@@ -310,9 +310,16 @@ function adminDays(records) {
     const chip =
       r.type === 'ot'
         ? {
-            title: `${r.name} 연장 +${fmtMinutes(r.minutes)}`,
-            color: '#FD7E14',
-            tip: { label: r.name, real: `연장 ${fmtMinutes(r.minutes)}`, status: r.status, note: r.range ? `시간대 ${r.range}` : '', memo: r.reason },
+            title: `${r.name} +${fmtMinutes(r.minutes)}`, // 배지로 연장근무임을 알 수 있어 "연장" 생략 (칸이 좁음)
+            badge: overtimeLook(r).badge,
+            color: overtimeLook(r).color,
+            tip: {
+              label: r.name,
+              real: `연장 ${fmtMinutes(r.minutes)}`,
+              status: overtimeLook(r).status,
+              note: [r.range ? `시간대 ${r.range}` : '', overtimeUseNote(r)].filter(Boolean).join(' · '),
+              memo: r.reason,
+            },
           }
         : {
             title: `${r.name} 조퇴 ${r.time}`,
@@ -366,18 +373,42 @@ function punchChip(kind, p, shortfall = 0) {
 }
 
 // "연장근무 신청 1시간 7분 (17:30~18:37)" → 칩 "연장 +1시간 7분", 툴팁에 시간대
-function overtimeChip(ev) {
+// 연장근무 사용 상태별 표시: 미사용(주황) / 사용(회색 ✓) / 당일 지각분(보라 ✓) - 칩 맨 앞 배지로 (글자가 잘려도 보이게)
+const OT_BADGE = {
+  unused: '<span class="ev-badge unused">미사용</span>',
+  used: '<span class="ev-badge used">✓사용</span>',
+  late: '<span class="ev-badge late">✓지각분</span>',
+};
+function overtimeLook(item) {
+  if (!item) return { badge: null, color: '#FD7E14', status: '' }; // 내역에 아직 없음
+  if (item.usedKind === 'late') return { badge: 'late', color: '#5B47FB', status: '지각분' };
+  if (item.status === '사용') return { badge: 'used', color: '#8392A5', status: '사용' };
+  return { badge: 'unused', color: '#FD7E14', status: '미사용' };
+}
+
+function overtimeUseNote(item) {
+  if (!item || item.status !== '사용') return '';
+  if (item.usedBy === 'early') return `${item.usedFor} 조퇴에 사용`;
+  if (item.usedKind === 'late') return `${item.usedOn} 당일 지각분`;
+  return item.usedOn ? `${item.usedOn} 사용 (소급)` : '사용 (소급)';
+}
+
+// "연장근무 신청 1시간 7분 (17:30~18:37)" → 칩 "연장 +1시간 7분 · 미사용" (상태는 연장근무 내역과 맞춰 봄)
+function overtimeChip(ev, date) {
   const m = /^연장근무\s*신청\s*(.+?)\s*\((.+)\)\s*$/.exec(ev.title || '');
   if (!m) return null;
+  const item = otState.items.find((o) => o.key === `${date} ${m[2]}`);
+  const look = overtimeLook(item);
   return {
     title: `연장 +${m[1]}`,
-    color: ev.color || '#FD7E14',
-    tip: { label: '연장근무', real: m[1], note: `시간대 ${m[2]}` },
+    badge: look.badge,
+    color: look.color,
+    tip: { label: '연장근무', real: m[1], status: look.status, note: [`시간대 ${m[2]}`, overtimeUseNote(item)].filter(Boolean).join(' · '), memo: item?.reason },
   };
 }
 
 function dayEvents(day) {
-  const events = (day.events || []).filter((ev) => !isScheduleInfo(ev)).map((ev) => overtimeChip(ev) || ev);
+  const events = (day.events || []).filter((ev) => !isScheduleInfo(ev)).map((ev) => overtimeChip(ev, day.date) || ev);
   if (!day.punch) return events;
   // 상세 조회가 된 날은 달력의 보정 시간 대신 실제 시간으로 표시
   const chips = ['in', 'out']
@@ -401,7 +432,10 @@ function holidayLabel(ev) {
   return m ? ev.name || m[1] : null;
 }
 
+let lastGrid = null; // 연장근무 상태가 바뀌면 달력을 다시 그리기 위해 보관
+
 function renderGrid(month, days) {
+  lastGrid = { month, days };
   const byDate = new Map(days.map((d) => [d.date, dayEvents(d)]));
   const [y, m] = month.split('-').map(Number);
   const first = new Date(y, m - 1, 1);
@@ -424,7 +458,7 @@ function renderGrid(month, days) {
         const style = `background:${tint(color)};border-color:${esc(color)};color:${esc(ev.txt_color || '#1b2e4b')}`;
         if (ev.tip) {
           const memo = ev.tip.memo ? '<span class="memo-dot" aria-label="사유 있음"></span>' : '';
-          return `<div class="ev punch-ev" data-tip="${esc(JSON.stringify(ev.tip))}" style="${style}">${esc(ev.title)}${memo}</div>`;
+          return `<div class="ev punch-ev${ev.badge === 'used' || ev.badge === 'late' ? ' ev-used' : ''}" data-tip="${esc(JSON.stringify(ev.tip))}" style="${style}">${ev.badge ? OT_BADGE[ev.badge] : ''}${esc(ev.title)}${memo}</div>`;
         }
         // 휴가는 종류만 표시, 전체 이름은 마우스를 올리면 보임
         const label = vacationLabel(ev.title) || holidayLabel(ev) || ev.title;
@@ -548,6 +582,8 @@ function applyOvertime(res) {
   $('#ot-fetched').textContent = state.adminMode ? '(전체 사용자)' : t ? `${t.getMonth() + 1}/${t.getDate()} ${t.toTimeString().slice(0, 5)} 기준` : '';
   $('#ot-fetched').title = t ? `회사 홈페이지에서 받아온 시각: ${t.toLocaleString('ko-KR')}` : '';
   renderOvertime();
+  // 사용자 달력의 연장근무 칩 사용/미사용 표시 갱신 (관리자 달력은 자체 데이터로 그림)
+  if (!state.adminMode && lastGrid && lastGrid.month === state.month) renderGrid(lastGrid.month, lastGrid.days);
 }
 
 $('#ot-refresh').addEventListener('click', () => loadOvertime(true));

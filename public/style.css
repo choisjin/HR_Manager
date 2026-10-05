@@ -442,3 +442,10 @@ button.ot-badge:disabled { opacity: .5; cursor: wait; }
 .ot-mark-kinds .ot-mark-date { margin: 0 0 0 22px; }
 .ot-mark-kinds .ot-mark-date input:disabled { opacity: .45; }
 .ot-badge.late { background: rgba(91, 71, 251, .1); color: var(--night); }
+
+/* 달력 연장근무 칩: 사용/미사용 배지 (칩 맨 앞) */
+.ev-badge { display: inline-block; margin-right: 4px; padding: 0 5px; border-radius: 8px; font-size: 10px; line-height: 16px; font-weight: 700; vertical-align: 1px; }
+.ev-badge.unused { background: #fd7e14; color: #fff; }
+.ev-badge.used { background: #8392a5; color: #fff; }
+.ev-badge.late { background: #5b47fb; color: #fff; }
+.ev.ev-used { color: #8392a5 !important; }
