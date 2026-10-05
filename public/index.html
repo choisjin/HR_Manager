@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HR Manager</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 로그인 -->
+<section id="login-view" class="login-wrap" hidden>
+  <form id="login-form" class="login-card">
+    <h1>HR Manager</h1>
+    <p class="muted">회사 그룹웨어 계정으로 로그인</p>
+    <label>아이디<input name="id" autocomplete="username" required></label>
+    <label>비밀번호<input name="password" type="password" autocomplete="current-password"></label>
+    <div class="login-options">
+      <label><input type="checkbox" name="remember"> 로그인 정보 저장</label>
+      <label><input type="checkbox" name="auto"> 자동 로그인</label>
+    </div>
+    <button type="submit" class="btn-primary">로그인</button>
+    <p id="login-error" class="error" hidden></p>
+  </form>
+</section>
+
+<!-- 달력 -->
+<section id="calendar-view" class="schedule" hidden>
+  <header class="toolbar">
+    <div class="user-wrap">
+      <div class="user" id="user-info"></div>
+      <button id="btn-admin" class="btn-mini" title="관리자 인증 / 해제">관리자 인증</button>
+    </div>
+    <div class="month-nav">
+      <button id="prev" class="icon-btn" title="이전 달">&#10094;</button>
+      <div class="period-wrap">
+        <button id="period-title" class="period-title" title="클릭해서 년월 선택"></button>
+        <div id="month-picker" class="month-picker" hidden>
+          <div class="wheels">
+            <div class="wheel" id="wheel-year"></div>
+            <div class="wheel" id="wheel-month"></div>
+            <div class="wheel-band"></div>
+          </div>
+          <div class="picker-buttons">
+            <button id="picker-cancel" class="btn-outline">취소</button>
+            <button id="picker-ok" class="btn-primary">이동</button>
+          </div>
+        </div>
+      </div>
+      <button id="next" class="icon-btn" title="다음 달">&#10095;</button>
+    </div>
+    <div class="actions">
+      <button id="btn-export" class="btn-outline" hidden title="연장근무·조퇴 내역을 엑셀로 추출">추출</button>
+      <button id="btn-mode" class="btn-outline btn-mode" hidden title="사용자 / 관리자 화면 전환"></button>
+      <button id="today" class="btn-outline">오늘</button>
+      <button id="refresh" class="btn-outline" title="새로고침">&#8635;</button>
+      <button id="logout" class="btn-outline">로그아웃</button>
+    </div>
+  </header>
+
+  <div class="body">
+    <main class="calendar">
+      <div class="weekdays">
+        <div class="sun">일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div class="sat">토</div>
+      </div>
+      <div id="grid" class="grid"></div>
+      <div id="loading" class="loading" hidden>불러오는 중…</div>
+    </main>
+    <aside class="summary">
+      <div class="box punch">
+        <div class="box-title">오늘 출퇴근 <span id="punch-date" class="muted"></span></div>
+        <div id="punch-schedule" class="punch-schedule muted"></div>
+        <div class="punch-rows">
+          <div class="punch-row"><span>출근</span><b id="in-time">--:--</b><em id="in-status"></em></div>
+          <div class="punch-row"><span>퇴근</span><b id="out-time">--:--</b><em id="out-status"></em></div>
+        </div>
+        <div class="punch-buttons">
+          <button id="btn-in" class="btn-primary">출근</button>
+          <button id="btn-out" class="btn-dark">퇴근</button>
+          <div class="report-wrap">
+            <button id="btn-report" class="btn-outline btn-report">보고 ▾</button>
+            <div id="report-menu" class="report-menu" hidden>
+              <button data-report="plan">연장 근무 계획 보고</button>
+              <button data-report="result">연장 근무 결과 보고</button>
+              <button data-report="adjust">근무조정 보고</button>
+            </div>
+          </div>
+        </div>
+        <p id="punch-msg" class="punch-msg" hidden></p>
+      </div>
+      <div class="box vac-box">
+        <div class="box-title box-title-row">
+          <span>휴가</span>
+          <span class="btn-group">
+            <button id="btn-vacation-request" class="btn-mini" title="휴가 신청">신청</button>
+            <button id="btn-vacation-history" class="btn-mini" title="휴가 신청 내역">내역</button>
+          </span>
+        </div>
+        <div id="vacation-rows"></div>      </div>
+      <div class="box ot-box">
+        <div class="box-title box-title-row">
+          <span>연장근무 내역 <small id="ot-fetched" class="muted"></small></span>
+          <button id="ot-refresh" class="btn-mini" title="회사 홈페이지에서 연장근무 내역을 새로 받아옵니다">새로고침</button>
+        </div>
+        <div id="ot-totals" class="ot-totals"></div>
+        <div class="ot-table-wrap">
+          <table class="ot-table">
+            <thead>
+              <tr>
+                <th class="admin-only"><span>이름</span><button class="col-filter" data-col="name" title="정렬 / 필터">▾</button></th>
+                <th><span>날짜</span><button class="col-filter" data-col="date" title="정렬 / 필터">▾</button></th>
+                <th><span>시간</span><button class="col-filter" data-col="minutes" title="정렬">▾</button></th>
+                <th><span>상태</span><button class="col-filter" data-col="status" title="필터">▾</button></th>
+              </tr>
+            </thead>
+            <tbody id="ot-rows"><tr><td colspan="3" class="muted ot-empty">불러오는 중…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </aside>
+    <!-- 엑셀식 열 메뉴 (정렬 + 체크박스 필터) -->
+    <div id="col-menu" class="col-menu" hidden></div>
+  </div>
+</section>
+
+<!-- 확인 / 사유 입력 모달 -->
+<dialog id="modal" class="modal">
+  <form method="dialog">
+    <h3 id="modal-title"></h3>
+    <p id="modal-text"></p>
+    <textarea id="modal-input" rows="3" placeholder="사유를 입력하세요" hidden></textarea>
+    <div class="modal-buttons">
+      <button value="cancel" class="btn-outline">취소</button>
+      <button value="ok" class="btn-primary">확인</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 관리자 인증 / 비밀번호 변경 -->
+<dialog id="admin-dlg" class="modal admin-dlg">
+  <h3>관리자 인증</h3>
+  <form id="admin-auth-form" class="admin-form">
+    <input type="password" id="admin-password" placeholder="관리자 비밀번호" autocomplete="off" required>
+    <button class="btn-primary">인증</button>
+  </form>
+  <p id="admin-msg" class="vac-msg" hidden></p>
+  <details class="admin-change">
+    <summary>비밀번호 변경 (인수인계)</summary>
+    <form id="admin-change-form" class="admin-form admin-form-col">
+      <input type="password" id="admin-cur" placeholder="현재 비밀번호" autocomplete="off" required>
+      <input type="password" id="admin-new" placeholder="새 비밀번호 (4자 이상)" autocomplete="new-password" required minlength="4">
+      <input type="password" id="admin-new2" placeholder="새 비밀번호 확인" autocomplete="new-password" required minlength="4">
+      <button class="btn-outline">비밀번호 변경</button>
+    </form>
+  </details>
+  <div class="modal-buttons">
+    <button type="button" class="btn-outline" id="admin-close">닫기</button>
+  </div>
+</dialog>
+
+<!-- 엑셀 추출: 달 선택 -->
+<dialog id="export-dlg" class="modal export-dlg">
+  <h3>연장근무·조퇴 엑셀 추출</h3>
+  <p class="muted">추출할 달을 선택하세요. 여러 달을 고르면 달마다 시트로 나뉩니다.</p>
+  <div id="export-months" class="export-months"></div>
+  <p id="export-msg" class="vac-msg" hidden></p>
+  <div class="modal-buttons">
+    <button type="button" class="btn-outline" id="export-close">닫기</button>
+    <button type="button" class="btn-primary" id="export-run">엑셀 추출</button>
+  </div>
+</dialog>
+
+<!-- 보고 메일 (계획 / 결과 / 근무조정) -->
+<dialog id="report-dlg" class="vac-dialog report-dlg">
+  <div class="vac-head">
+    <h3 id="report-title" class="report-title"></h3>
+    <button class="icon-btn vac-close" id="report-close" title="닫기">✕</button>
+  </div>
+  <form id="report-form" class="vac-body" autocomplete="off">
+    <p id="report-desc" class="muted report-desc" hidden></p>
+
+    <!-- 계획/결과 보고 -->
+    <div class="r-grid" data-for="plan result">
+      <label>프로젝트<input id="r-project" list="r-projects" placeholder="프로젝트 이름" required></label>
+      <datalist id="r-projects"></datalist>
+      <label>일자<input type="date" id="r-date" required></label>
+    </div>
+
+    <!-- 근무조정 보고 -->
+    <div class="r-grid" data-for="adjust">
+      <label>구분
+        <select id="r-adj-kind">
+          <option value="퇴근">퇴근</option>
+          <option value="출근">출근</option>
+        </select>
+      </label>
+      <label>조정 시간 (금일)<input type="time" id="r-adj-time" required></label>
+    </div>
+    <div data-for="adjust">
+      <label class="r-full">조정 사유<input id="r-adj-reason" placeholder="예: 개인 정비" required></label>
+      <label class="r-full">내 추가근무 선택<select id="r-adj-ot"></select></label>
+    </div>
+
+    <div class="r-grid">
+      <label>받는 사람 (고정)<input id="r-to" placeholder="메일 주소 (여러 명은 ; 로 구분)" required></label>
+      <label>받는 사람 추가 (1인, 선택)<input id="r-to-extra" placeholder="추가 받는사람 이메일"></label>
+    </div>
+    <label class="r-full">참조 (고정)<input id="r-cc" placeholder="참조 메일 주소 (여러 명은 ; 로 구분)"></label>
+
+    <!-- 담당자별 사유 (계획/결과) -->
+    <div data-for="plan result">
+      <div class="r-sub">담당자별 연장근무 사유 · 제목: <b id="r-subject-preview"></b></div>
+      <table class="r-table">
+        <thead><tr><th class="c-name">담당자</th><th>연장근무 사유</th><th class="c-time" data-for="result">퇴근 시간</th><th class="c-act"></th></tr></thead>
+        <tbody id="r-rows"></tbody>
+      </table>
+      <button type="button" class="link-btn" id="r-add-row">+ 담당자 추가</button>
+    </div>
+
+    <p id="report-msg" class="vac-msg" hidden></p>
+    <div class="vac-foot">
+      <button type="button" class="btn-outline" id="r-copy">제목·본문 복사</button>
+      <button type="submit" class="btn-primary">메일 작성</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 담당자 선택 (조직도 / 이름 검색) -->
+<dialog id="person-dlg" class="modal person-dlg">
+  <h3>담당자 선택</h3>
+  <div class="vac-search">
+    <input type="search" id="person-search" placeholder="이름 / 부서 검색">
+    <ul id="person-results" class="vac-results" hidden></ul>
+  </div>
+  <div id="person-tree" class="org-tree person-tree"></div>
+  <div class="modal-buttons">
+    <button type="button" class="btn-outline" id="person-cancel">닫기</button>
+  </div>
+</dialog>
+
+<!-- 연장근무 소급 처리: 사용일 선택 -->
+<dialog id="ot-mark" class="modal">
+  <form method="dialog">
+    <h3>연장근무 사용 처리 (소급)</h3>
+    <p id="ot-mark-text"></p>
+    <label class="ot-mark-date">사용일 <input type="date" id="ot-mark-date" required></label>
+    <div class="modal-buttons">
+      <button value="cancel" class="btn-outline" formnovalidate>취소</button>
+      <button value="ok" class="btn-primary">사용으로 변경</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 조퇴: 사용할 연장근무 선택 -->
+<dialog id="ot-pick" class="modal ot-pick">
+  <h3>조퇴 - 사용할 연장근무 선택</h3>
+  <p id="ot-pick-text"></p>
+  <ul id="ot-pick-list" class="ot-pick-list"></ul>
+  <div class="modal-buttons">
+    <button type="button" class="btn-outline" data-act="cancel">취소</button>
+    <button type="button" class="btn-outline" data-act="none">연장근무 없이 조퇴</button>
+    <button type="button" class="btn-primary" data-act="use">선택한 연장근무로 조퇴</button>
+  </div>
+</dialog>
+
+<!-- 휴가 신청 -->
+<dialog id="vac-dialog" class="vac-dialog">
+  <div class="vac-head">
+    <div class="vac-tabs">
+      <button class="vac-tab active" data-tab="form">휴가 신청</button>
+      <button class="vac-tab" data-tab="list">신청 내역</button>
+    </div>
+    <button class="icon-btn vac-close" id="vac-close" title="닫기">✕</button>
+  </div>
+
+  <form id="vac-form" class="vac-body" data-panel="form" autocomplete="off">
+    <div class="vac-row">
+      <label class="vac-label" for="vac-type">휴가 종류</label>
+      <select id="vac-type" required></select>
+    </div>
+    <div class="vac-row">
+      <span class="vac-label">기간</span>
+      <div class="vac-dates">
+        <input type="date" id="vac-start" required> <span>~</span> <input type="date" id="vac-end" required>
+      </div>
+    </div>
+    <div class="vac-row">
+      <span class="vac-label">사용</span>
+      <div class="vac-radios" id="vac-daytype">
+        <label><input type="radio" name="daytype" value="1" checked> 종일</label>
+        <label><input type="radio" name="daytype" value="2"> 오전반차</label>
+        <label><input type="radio" name="daytype" value="3"> 오후반차</label>
+      </div>
+    </div>
+
+    <div class="vac-row vac-row-top">
+      <span class="vac-label">결재자</span>
+      <div class="vac-people">
+        <div class="vac-radios">
+          <label><input type="radio" name="order" value="seq" checked> 순차 결재</label>
+          <label><input type="radio" name="order" value="par"> 동시 결재</label>
+        </div>
+        <ol id="vac-approvers" class="vac-approvers"></ol>
+        <div class="vac-search">
+          <input type="search" id="vac-approver-search" placeholder="결재자 검색 (이름 / 부서)">
+          <ul id="vac-approver-results" class="vac-results" hidden></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="vac-row vac-row-top">
+      <span class="vac-label">참조자 <b id="vac-cc-count"></b></span>
+      <div class="vac-people">
+        <div class="vac-search">
+          <input type="search" id="vac-cc-search" placeholder="참조자 검색 (이름 / 부서)">
+          <ul id="vac-cc-results" class="vac-results" hidden></ul>
+        </div>
+        <div id="org-tree" class="org-tree"><div class="muted org-loading">조직도를 불러오는 중…</div></div>
+        <div class="vac-sub">선택된 참조자</div>
+        <div id="vac-cc" class="vac-chips"></div>
+        <div class="vac-links">
+          <button type="button" class="link-btn" id="vac-cc-clear">모두 지우기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="vac-row vac-row-top">
+      <label class="vac-label" for="vac-memo">사유</label>
+      <textarea id="vac-memo" rows="4"></textarea>
+    </div>
+    <div class="vac-row">
+      <span class="vac-label">메일 알림</span>
+      <div class="vac-radios">
+        <label><input type="checkbox" id="vac-mail-approver" checked> 결재자</label>
+        <label><input type="checkbox" id="vac-mail-cc" checked> 참조자</label>
+      </div>
+    </div>
+
+    <p id="vac-msg" class="vac-msg" hidden></p>
+    <div class="vac-foot">
+      <button type="button" class="btn-outline" id="vac-cancel">닫기</button>
+      <button type="submit" class="btn-primary" id="vac-submit">신청</button>
+    </div>
+  </form>
+
+  <div class="vac-body" data-panel="list" hidden>
+    <p id="vac-list-msg" class="vac-msg" hidden></p>
+    <table class="vac-list">
+      <thead><tr><th>휴가</th><th>기간</th><th>사용</th><th>상태</th><th></th></tr></thead>
+      <tbody id="vac-list-rows"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<script src="app.js"></script>
+<script src="vacation.js"></script>
+<script src="report.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
