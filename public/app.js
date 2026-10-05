@@ -609,8 +609,9 @@ function renderOvertime() {
       const d = new Date(`${o.date}T00:00:00`);
       const dateLabel = `${o.date.slice(2).replace(/-/g, '.')} (${'일월화수목금토'[d.getDay()]})`;
       const early = o.type === 'early';
-      const timeLabel = early ? `조퇴 ${esc(o.time || '')}${o.minutes ? ` (-${fmtMinutes(o.minutes)})` : ''}` : fmtMinutes(o.minutes);
-      const rowTip = early ? `조퇴${o.reason ? `\n사유: ${o.reason}` : ''}` : `${o.range || ''}${o.reason ? `\n사유: ${o.reason}` : ''}`;
+      // 조퇴는 상태 열에 표시되므로 시간 열에는 부족 시간만 (퇴근 시각은 툴팁)
+      const timeLabel = early ? (o.minutes ? `-${fmtMinutes(o.minutes)}` : '-') : fmtMinutes(o.minutes);
+      const rowTip = early ? `퇴근 ${o.time || '-'}${o.reason ? `\n사유: ${o.reason}` : ''}` : `${o.range || ''}${o.reason ? `\n사유: ${o.reason}` : ''}`;
       const late = o.usedKind === 'late'; // 당일 지각분 (상태는 '사용'으로 집계)
       const badgeCls = `ot-badge ${late ? 'late' : cls[o.status] || ''}${o.usedBy === 'manual' ? ' manual' : ''}`;
       const label = `${late ? '지각분' : esc(o.status)}${o.usedBy === 'manual' ? '*' : ''}`;
