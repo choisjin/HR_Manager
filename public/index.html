@@ -243,7 +243,11 @@
   <form method="dialog">
     <h3>연장근무 사용 처리 (소급)</h3>
     <p id="ot-mark-text"></p>
-    <label class="ot-mark-date">사용일 <input type="date" id="ot-mark-date" required></label>
+    <div class="ot-mark-kinds">
+      <label><input type="radio" name="ot-mark-kind" value="date" checked> 사용일 지정</label>
+      <label class="ot-mark-date">사용일 <input type="date" id="ot-mark-date" required></label>
+      <label><input type="radio" name="ot-mark-kind" value="late"> 당일 지각분 <small class="muted">(지각한 만큼 그날 추가 근무)</small></label>
+    </div>
     <div class="modal-buttons">
       <button value="cancel" class="btn-outline" formnovalidate>취소</button>
       <button value="ok" class="btn-primary">사용으로 변경</button>

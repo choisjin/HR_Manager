@@ -1,5 +1,5 @@
 // 연장근무 '사용' 소급 처리 저장소 (회사 기록이 없는 과거 사용분을 직접 표시)
-// data/overtime-marks.json: { "<사용자 id>": { "<연장근무 키>": { "usedOn": "2026-07-02" } } }
+// data/overtime-marks.json: { "<사용자 id>": { "<연장근무 키>": { "usedOn": "2026-07-02", "kind"?: "late" } } }
 const fs = require('fs');
 const path = require('path');
 
@@ -32,10 +32,11 @@ function getMarks(userId) {
 }
 
 // usedOn 이 있으면 소급 저장, null 이면 소급 정보 삭제(초기화)
-function setMark(userId, key, usedOn) {
+// kind: 'late' = 당일 지각분 (지각한 만큼 추가 근무), 없으면 일반 소급
+function setMark(userId, key, usedOn, kind) {
   const all = readAll();
   const mine = all[userId] || {};
-  if (usedOn) mine[key] = { usedOn };
+  if (usedOn) mine[key] = kind === 'late' ? { usedOn, kind } : { usedOn };
   else delete mine[key];
   all[userId] = mine;
   writeAll(all);

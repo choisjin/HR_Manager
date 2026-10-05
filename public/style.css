@@ -435,3 +435,10 @@ button.ot-badge:disabled { opacity: .5; cursor: wait; }
 .admin-mode .ot-box { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-bottom: 0; }
 .admin-mode .ot-table-wrap { flex: 1; max-height: none; }
 .ot-badge.early { background: rgba(16, 183, 89, .12); color: #10b759; }
+
+/* 소급 방식: 사용일 지정 / 당일 지각분 */
+.ot-mark-kinds { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; font-size: 13px; }
+.ot-mark-kinds > label:not(.ot-mark-date) { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.ot-mark-kinds .ot-mark-date { margin: 0 0 0 22px; }
+.ot-mark-kinds .ot-mark-date input:disabled { opacity: .45; }
+.ot-badge.late { background: rgba(91, 71, 251, .1); color: var(--night); }

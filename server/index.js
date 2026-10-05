@@ -206,7 +206,8 @@ app.get('/api/overtime', requireLogin, (req, res) => handle(req, res, () => over
 app.post('/api/overtime/mark', requireLogin, async (req, res) => {
   const key = String((req.body && req.body.key) || '');
   const used = !!(req.body && req.body.used);
-  const usedOn = String((req.body && req.body.usedOn) || '');
+  const kind = req.body && req.body.kind === 'late' ? 'late' : null; // 당일 지각분
+  let usedOn = String((req.body && req.body.usedOn) || '');
   try {
     const data = await overtimeData(req, false);
     if (data.expired) {
@@ -222,14 +223,15 @@ app.post('/api/overtime/mark', requireLogin, async (req, res) => {
         message: `${item.usedFor} 조퇴에 사용된 연장근무입니다.\n조퇴에 사용되어 정정신청으로 변경하세요.`,
       });
     }
+    if (used && kind === 'late') usedOn = item.date; // 당일 지각분은 연장근무한 그날 사용
     if (used) {
       const today = new Date().toLocaleDateString('sv-SE');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(usedOn)) return res.status(400).json({ success: false, message: '사용일을 선택하세요.' });
       if (usedOn < item.date || usedOn > today)
         return res.status(400).json({ success: false, message: `사용일은 ${item.date} ~ ${today} 사이여야 합니다.` });
     }
-    marks.setMark(req.gw.user.id, key, used ? usedOn : null);
-    console.log(`[overtime] ${key} → ${used ? `사용(소급, ${usedOn})` : '미사용(소급 초기화)'}`);
+    marks.setMark(req.gw.user.id, key, used ? usedOn : null, kind);
+    console.log(`[overtime] ${key} → ${used ? `사용(${kind === 'late' ? '당일 지각분' : '소급'}, ${usedOn})` : '미사용(소급 초기화)'}`);
     res.json({ success: true, ...overtimeStore.withStatus(req.gw.user.id, overtimeStore.loadCache(req.gw.user.id)) });
   } catch (e) {
     console.error('overtime mark error:', e.message);

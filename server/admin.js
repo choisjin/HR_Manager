@@ -46,7 +46,7 @@ function allRecords() {
   const rows = [];
   for (const u of overtimeStore.allUsers()) {
     for (const o of u.items) {
-      rows.push({ type: 'ot', userId: u.userId, name: u.name, key: `${u.userId}|${o.key}`, date: o.date, range: o.range, minutes: o.minutes, reason: o.reason, status: o.status, usedFor: o.usedFor, usedOn: o.usedOn, usedBy: o.usedBy });
+      rows.push({ type: 'ot', userId: u.userId, name: u.name, key: `${u.userId}|${o.key}`, date: o.date, range: o.range, minutes: o.minutes, reason: o.reason, status: o.status, usedFor: o.usedFor, usedOn: o.usedOn, usedBy: o.usedBy, usedKind: o.usedKind });
     }
     for (const e of u.early) {
       rows.push({ type: 'early', userId: u.userId, name: u.name, key: `${u.userId}|early|${e.date}`, date: e.date, time: e.time, minutes: e.minutes, reason: e.memo, status: '조퇴', overtimeDates: e.overtimeDates || [] });
@@ -97,7 +97,7 @@ async function exportExcel(monthList) {
         for (const r of mine.filter((x) => x.date === date)) {
           if (r.type === 'ot') {
             ot += r.minutes;
-            lines.push(`연장 +${fmt(r.minutes)}${r.status === '사용' ? ' (사용)' : ''}`);
+            lines.push(`연장 +${fmt(r.minutes)}${r.usedKind === 'late' ? ' (지각분)' : r.status === '사용' ? ' (사용)' : ''}`);
           } else {
             early += r.minutes;
             lines.push(`조퇴 ${r.time}${r.minutes ? ` (-${fmt(r.minutes)})` : ''}`);

@@ -60,7 +60,14 @@ function withStatus(userId, cache) {
     const usedFor = usedByEarly.get(o.date) || null;
     const mark = m.get(o.key);
     const usedBy = usedFor ? 'early' : mark ? 'manual' : null;
-    return { ...o, usedFor, status: usedBy ? '사용' : '미사용', usedBy, usedOn: usedFor || (mark && mark.usedOn) || null };
+    return {
+      ...o,
+      usedFor,
+      status: usedBy ? '사용' : '미사용',
+      usedBy,
+      usedKind: usedBy === 'manual' && mark.kind === 'late' ? 'late' : null, // 'late': 당일 지각분
+      usedOn: usedFor || (mark && mark.usedOn) || null,
+    };
   });
   const earned = items.reduce((s, o) => s + o.minutes, 0);
   const used = items.reduce((s, o) => s + (o.usedBy ? o.minutes : 0), 0);

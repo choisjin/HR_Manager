@@ -611,11 +611,12 @@ function renderOvertime() {
       const early = o.type === 'early';
       const timeLabel = early ? `조퇴 ${esc(o.time || '')}${o.minutes ? ` (-${fmtMinutes(o.minutes)})` : ''}` : fmtMinutes(o.minutes);
       const rowTip = early ? `조퇴${o.reason ? `\n사유: ${o.reason}` : ''}` : `${o.range || ''}${o.reason ? `\n사유: ${o.reason}` : ''}`;
-      const badgeCls = `ot-badge ${cls[o.status] || ''}${o.usedBy === 'manual' ? ' manual' : ''}`;
-      const label = `${esc(o.status)}${o.usedBy === 'manual' ? '*' : ''}`;
+      const late = o.usedKind === 'late'; // 당일 지각분 (상태는 '사용'으로 집계)
+      const badgeCls = `ot-badge ${late ? 'late' : cls[o.status] || ''}${o.usedBy === 'manual' ? ' manual' : ''}`;
+      const label = `${late ? '지각분' : esc(o.status)}${o.usedBy === 'manual' ? '*' : ''}`;
       // 관리자 화면은 보기 전용, 사용자 화면은 상태 버튼(소급 처리)
       const statusCell = state.adminMode
-        ? `<span class="${badgeCls}" title="${esc(o.usedOn ? `${o.usedOn} 사용` : '')}">${label}</span>`
+        ? `<span class="${badgeCls}" title="${esc(late ? `${o.usedOn} 당일 지각분` : o.usedOn ? `${o.usedOn} 사용` : '')}">${label}</span>`
         : `<button class="${badgeCls}" data-key="${esc(o.key)}" title="${esc(statusTip(o))}">${label}</button>`;
       return `<tr title="${esc(rowTip)}">
         ${state.adminMode ? `<td>${esc(o.name)}</td>` : ''}
@@ -629,8 +630,9 @@ function renderOvertime() {
 
 function statusTip(o) {
   if (o.usedBy === 'early') return `${o.usedFor} 조퇴에 사용`;
+  if (o.usedKind === 'late') return `${o.usedOn} 당일 지각분 (소급 처리, 누르면 미사용으로)`;
   if (o.usedBy === 'manual') return `${o.usedOn ? `${o.usedOn} 사용 ` : ''}(소급 처리, 누르면 미사용으로)`;
-  return '누르면 사용일을 정해 사용으로 변경 (소급)';
+  return '누르면 사용으로 변경 (사용일 지정 / 당일 지각분)';
 }
 
 // 상태 버튼: 미사용 → 사용(소급), 사용(소급) → 미사용, 조퇴에 사용된 건은 안내만
@@ -651,15 +653,15 @@ $('#ot-rows').addEventListener('click', async (e) => {
     // 소급 처리 취소 → 소급 정보(사용일) 초기화
     const ok = await modal({
       title: '미사용으로 변경',
-      text: `${item.date} 연장근무 ${fmtMinutes(item.minutes)}\n소급 정보${item.usedOn ? `(사용일 ${item.usedOn})` : ''}를 지우고 미사용으로 바꿀까요?`,
+      text: `${item.date} 연장근무 ${fmtMinutes(item.minutes)}\n소급 정보${item.usedKind === 'late' ? '(당일 지각분)' : item.usedOn ? `(사용일 ${item.usedOn})` : ''}를 지우고 미사용으로 바꿀까요?`,
       okText: '미사용으로',
     });
     if (!ok) return;
     body = { key: item.key, used: false };
   } else {
-    const usedOn = await askUsedOn(item);
-    if (!usedOn) return;
-    body = { key: item.key, used: true, usedOn };
+    const pick = await askUsedOn(item);
+    if (!pick) return;
+    body = { key: item.key, used: true, ...pick };
   }
   btn.disabled = true;
   try {
@@ -678,20 +680,36 @@ $('#ot-rows').addEventListener('click', async (e) => {
 });
 
 // 소급 사용일 선택 (연장근무 발생일 ~ 오늘)
+// 소급 방식 선택: 사용일 지정 → { usedOn }, 당일 지각분 → { usedOn: 연장근무 날짜, kind: 'late' }
 function askUsedOn(item) {
   const dlg = $('#ot-mark');
   const input = $('#ot-mark-date');
   const today = ymd(new Date());
-  $('#ot-mark-text').textContent = `${item.date} 연장근무 ${fmtMinutes(item.minutes)}을(를) 언제 사용했는지 선택하세요.`;
+  $('#ot-mark-text').textContent = `${item.date} 연장근무 ${fmtMinutes(item.minutes)}을(를) 어떻게 사용했는지 선택하세요.`;
   input.min = item.date;
   input.max = today;
   input.value = today;
+  dlg.querySelector('input[name=ot-mark-kind][value=date]').checked = true;
+  input.disabled = false;
   dlg.returnValue = '';
   dlg.showModal();
   return new Promise((resolve) => {
-    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok' && input.value ? input.value : null), { once: true });
+    dlg.addEventListener(
+      'close',
+      () => {
+        if (dlg.returnValue !== 'ok') return resolve(null);
+        const late = dlg.querySelector('input[name=ot-mark-kind]:checked').value === 'late';
+        resolve(late ? { usedOn: item.date, kind: 'late' } : input.value ? { usedOn: input.value } : null);
+      },
+      { once: true }
+    );
   });
 }
+
+// 당일 지각분이면 날짜 입력 비활성 (그날 사용으로 고정)
+$('#ot-mark').addEventListener('change', (e) => {
+  if (e.target.name === 'ot-mark-kind') $('#ot-mark-date').disabled = e.target.value === 'late';
+});
 
 /* ---------- 엑셀식 열 메뉴 ---------- */
 
