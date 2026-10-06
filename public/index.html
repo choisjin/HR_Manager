@@ -60,6 +60,7 @@
 
   <div class="body">
     <main class="calendar">
+      <div id="cal-filter" class="cal-filter"></div>
       <div class="weekdays">
         <div class="sun">일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div class="sat">토</div>
       </div>
@@ -253,6 +254,15 @@
       <button value="ok" class="btn-primary">사용으로 변경</button>
     </div>
   </form>
+</dialog>
+
+<!-- 날짜 클릭: 그날 전체 목록 -->
+<dialog id="day-dlg" class="modal day-dlg">
+  <h3 id="day-title"></h3>
+  <div id="day-list" class="day-list"></div>
+  <div class="modal-buttons">
+    <button type="button" class="btn-outline" id="day-close">닫기</button>
+  </div>
 </dialog>
 
 <!-- 지각 출근: 사유 + 사용할 연장근무 -->

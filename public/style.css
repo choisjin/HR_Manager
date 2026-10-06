@@ -100,7 +100,7 @@ button { font: inherit; cursor: pointer; }
 .weekdays { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--border); }
 .weekdays div { text-align: center; padding: 10px 0; font-weight: 600; }
 .weekdays .sun { color: var(--sun); }
-.grid { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(120px, 1fr); overflow-y: auto; }
+.grid { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(150px, 1fr); overflow-y: auto; }
 .cell { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 4px 0 6px; min-width: 0; }
 .cell:nth-child(7n) { border-right: 0; }
 .cell.other { background: #fafbfc; }
@@ -457,3 +457,29 @@ button.ot-badge:disabled { opacity: .5; cursor: wait; }
   width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 6px; font: inherit; font-weight: normal; color: var(--text); background: var(--card); resize: none;
 }
 .late-hint { font-size: 12px; margin: -4px 0 14px; }
+
+/* 달력 상태 필터 */
+.cal-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.cal-filter .muted { margin-right: 2px; }
+.cal-chip { padding: 3px 10px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--card); color: var(--muted); font-size: 12px; text-decoration: line-through; }
+.cal-chip.on { border-color: var(--primary); background: rgba(1, 104, 250, .08); color: var(--primary); text-decoration: none; font-weight: 600; }
+
+/* 달력 칸: 날짜 숫자(클릭 → 그날 전체), 4개씩 돌아가며 표시 */
+button.date { border: 0; background: none; padding: 0; font: inherit; cursor: pointer; color: inherit; }
+button.date:hover { color: var(--primary); text-decoration: underline; }
+.cell.sun button.date { color: var(--sun); }
+.cell.today button.date { color: #fff; text-decoration: none; }
+.ev-roll { position: relative; }
+.ev-page { display: none; animation: ev-in .35s ease; }
+.ev-page.active { display: block; }
+@keyframes ev-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.ev-more { display: block; margin: 2px 8px 0; padding: 0; border: 0; background: none; font-size: 11px; color: var(--primary); cursor: pointer; }
+.ev-more:hover { text-decoration: underline; }
+
+/* 그날 전체 목록 팝업 */
+.day-dlg { width: min(460px, calc(100vw - 32px)); }
+.day-list { max-height: 60vh; overflow-y: auto; margin-bottom: 14px; }
+.day-list .ev-full { height: auto; line-height: 1.5; padding: 6px 8px; margin: 0 0 6px; white-space: normal; overflow: visible; font-size: 13px; }
+.ev-detail { margin-top: 2px; font-size: 12px; color: var(--muted); }
+.ev-memo { margin-top: 2px; color: var(--text); white-space: pre-wrap; }
+.ev-memo.muted { color: var(--muted); }

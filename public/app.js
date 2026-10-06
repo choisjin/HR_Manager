@@ -90,6 +90,7 @@ function applyMode() {
   $('#ot-refresh').title = state.adminMode ? '서버에 모인 모든 사용자의 내역을 다시 불러옵니다' : '회사 홈페이지에서 연장근무 내역을 새로 받아옵니다';
   // 화면이 바뀌면 목록 필터 초기화
   Object.assign(otState, { items: [], months: null, statuses: null, names: null, sort: 'date', dir: 'desc' });
+  renderCalFilter(); // 모드별 상태 필터 (사용자: 출퇴근 등 포함, 관리자: 연장근무·조퇴만)
   loadMonth();
   loadOvertime();
   if (!state.adminMode) {
@@ -311,6 +312,7 @@ function adminDays(records) {
       r.type === 'ot'
         ? {
             title: `${r.name} +${fmtMinutes(r.minutes)}`, // 배지로 연장근무임을 알 수 있어 "연장" 생략 (칸이 좁음)
+            cat: overtimeLook(r).status || '미사용',
             badge: overtimeLook(r).badge,
             color: overtimeLook(r).color,
             tip: {
@@ -324,6 +326,7 @@ function adminDays(records) {
           }
         : {
             title: `${r.name} 조퇴 ${r.time}`,
+            cat: '조퇴',
             color: '#10b759',
             tip: { label: r.name, real: `조퇴 ${r.time}`, note: r.minutes ? `부족 시간 ${fmtMinutes(r.minutes)}` : '', memo: r.reason },
           };
@@ -361,6 +364,7 @@ function punchChip(kind, p, shortfall = 0) {
   const short = kind === 'out' && shortfall > 0 ? ` (-${fmtMinutes(shortfall)})` : '';
   return {
     title: `${normal ? label : p.status_name} ${real}${short}`,
+    cat: kind === 'out' && p.status_name === '조퇴' ? '조퇴' : '출퇴근',
     color: p.status_color || '#0168FA',
     tip: {
       label,
@@ -409,11 +413,12 @@ function overtimeChip(ev, date) {
   const item = otState.items.find((o) => o.key === `${date} ${m[2]}`);
   if (!item && otMinutes(m[1]) < 30) {
     // 30분 미만은 추가근무로 인정 안 됨 (내역에도 없음) → 흐리게
-    return { title: `연장 +${m[1]}`, color: '#C0CCDA', tip: { label: '연장근무', real: m[1], note: `시간대 ${m[2]} · 30분 미만 (추가근무 미인정)` } };
+    return { title: `연장 +${m[1]}`, cat: '미인정', color: '#C0CCDA', tip: { label: '연장근무', real: m[1], note: `시간대 ${m[2]} · 30분 미만 (추가근무 미인정)` } };
   }
   const look = overtimeLook(item);
   return {
     title: `연장 +${m[1]}`,
+    cat: look.status || '미사용',
     badge: look.badge,
     color: look.color,
     tip: { label: '연장근무', real: m[1], status: look.status, note: [`시간대 ${m[2]}`, overtimeUseNote(item)].filter(Boolean).join(' · '), memo: item?.reason, showMemo: true },
@@ -445,11 +450,73 @@ function holidayLabel(ev) {
   return m ? ev.name || m[1] : null;
 }
 
-let lastGrid = null; // 연장근무 상태가 바뀌면 달력을 다시 그리기 위해 보관
+let lastGrid = null; // 연장근무 상태·필터가 바뀌면 달력을 다시 그리기 위해 보관
+let lastDayEvents = new Map(); // 날짜 → 그날 칩 (필터 적용) - 날짜 클릭 팝업용
+
+/* ---------- 달력 상태 필터 ---------- */
+
+const CAL_CATS = {
+  user: ['출퇴근', '미사용', '사용', '지각분', '조퇴', '미인정', '기타'],
+  admin: ['미사용', '사용', '지각분', '조퇴'],
+};
+const calMode = () => (state.adminMode ? 'admin' : 'user');
+const calHiddenKey = () => `hrm.calHidden.${calMode()}`;
+function calHidden() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(calHiddenKey()) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function renderCalFilter() {
+  const hidden = calHidden();
+  $('#cal-filter').innerHTML =
+    '<span class="muted">표시</span>' +
+    CAL_CATS[calMode()].map((c) => `<button type="button" class="cal-chip${hidden.has(c) ? '' : ' on'}" data-cat="${c}">${c}</button>`).join('');
+}
+
+$('#cal-filter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cat]');
+  if (!b) return;
+  const hidden = calHidden();
+  hidden.has(b.dataset.cat) ? hidden.delete(b.dataset.cat) : hidden.add(b.dataset.cat);
+  try {
+    localStorage.setItem(calHiddenKey(), JSON.stringify([...hidden]));
+  } catch {}
+  renderCalFilter();
+  if (lastGrid) renderGrid(lastGrid.month, lastGrid.days);
+});
+
+/* ---------- 달력 칸 ---------- */
+
+const MAX_PER_CELL = 4; // 칸에 한 번에 보이는 항목 수, 넘으면 4개씩 돌아가며 표시
+
+function chipHtml(ev, full = false) {
+  const color = ev.color || '#868686';
+  const style = `background:${tint(color)};border-color:${esc(color)};color:${esc(ev.txt_color || '#1b2e4b')}`;
+  if (ev.tip) {
+    const memo = !full && ev.tip.memo ? '<span class="memo-dot" aria-label="사유 있음"></span>' : '';
+    const detail = full
+      ? `<div class="ev-detail">${[ev.tip.status && `상태: ${ev.tip.status}`, ev.tip.time && ev.tip.time !== ev.tip.real && `인정 시간 ${ev.tip.time}`, ev.tip.note]
+          .filter(Boolean)
+          .map(esc)
+          .join(' · ')}${ev.tip.memo ? `<div class="ev-memo">사유: ${esc(ev.tip.memo)}</div>` : ev.tip.showMemo ? '<div class="ev-memo muted">사유 없음</div>' : ''}</div>`
+      : '';
+    const attrs = full ? '' : ` data-tip="${esc(JSON.stringify(ev.tip))}"`;
+    return `<div class="ev punch-ev${ev.badge === 'used' || ev.badge === 'late' ? ' ev-used' : ''}${full ? ' ev-full' : ''}"${attrs} style="${style}">${ev.badge ? OT_BADGE[ev.badge] : ''}${esc(ev.title)}${memo}${detail}</div>`;
+  }
+  // 휴가는 종류만 표시, 전체 이름은 마우스를 올리면 보임
+  const label = full ? ev.title : vacationLabel(ev.title) || holidayLabel(ev) || ev.title;
+  return `<div class="ev${full ? ' ev-full' : ''}" title="${esc(ev.title)}" style="${style}">${esc(label)}</div>`;
+}
 
 function renderGrid(month, days) {
   lastGrid = { month, days };
-  const byDate = new Map(days.map((d) => [d.date, dayEvents(d)]));
+  const hidden = calHidden();
+  const visible = (ev) => !hidden.has(ev.cat || '기타');
+  const byDate = new Map(days.map((d) => [d.date, dayEvents(d).filter(visible)]));
+  lastDayEvents = byDate;
   const [y, m] = month.split('-').map(Number);
   const first = new Date(y, m - 1, 1);
   const start = new Date(y, m - 1, 1 - first.getDay()); // 그 주 일요일부터
@@ -465,23 +532,49 @@ function renderGrid(month, days) {
     if (d.getMonth() !== m - 1) cls.push('other');
     if (d.getDay() === 0) cls.push('sun');
     if (key === today) cls.push('today');
-    const events = (byDate.get(key) || [])
-      .map((ev) => {
-        const color = ev.color || '#868686';
-        const style = `background:${tint(color)};border-color:${esc(color)};color:${esc(ev.txt_color || '#1b2e4b')}`;
-        if (ev.tip) {
-          const memo = ev.tip.memo ? '<span class="memo-dot" aria-label="사유 있음"></span>' : '';
-          return `<div class="ev punch-ev${ev.badge === 'used' || ev.badge === 'late' ? ' ev-used' : ''}" data-tip="${esc(JSON.stringify(ev.tip))}" style="${style}">${ev.badge ? OT_BADGE[ev.badge] : ''}${esc(ev.title)}${memo}</div>`;
-        }
-        // 휴가는 종류만 표시, 전체 이름은 마우스를 올리면 보임
-        const label = vacationLabel(ev.title) || holidayLabel(ev) || ev.title;
-        return `<div class="ev" title="${esc(ev.title)}" style="${style}">${esc(label)}</div>`;
-      })
-      .join('');
-    html += `<div class="${cls.join(' ')}"><span class="date">${d.getDate()}</span>${events}</div>`;
+    const evs = byDate.get(key) || [];
+    let body = evs.map((ev) => chipHtml(ev)).join('');
+    if (evs.length > MAX_PER_CELL) {
+      // 4개씩 페이지로 나눠 돌아가며 표시 (마우스를 올리면 멈춤)
+      const pages = [];
+      for (let p = 0; p < evs.length; p += MAX_PER_CELL) pages.push(evs.slice(p, p + MAX_PER_CELL));
+      body =
+        `<div class="ev-roll" data-page="0" data-pages="${pages.length}">` +
+        pages.map((pg, p) => `<div class="ev-page${p === 0 ? ' active' : ''}">${pg.map((ev) => chipHtml(ev)).join('')}</div>`).join('') +
+        `</div><button type="button" class="ev-more" data-day="${key}"><span class="ev-page-no">1</span>/${pages.length} · 전체 ${evs.length}건</button>`;
+    }
+    html += `<div class="${cls.join(' ')}"><button type="button" class="date" data-day="${key}" title="이 날 전체 보기">${d.getDate()}</button>${body}</div>`;
   }
   $('#grid').innerHTML = html;
 }
+
+// 4개 넘는 칸: 3초마다 다음 4개로 (마우스를 올린 칸은 멈춤)
+setInterval(() => {
+  document.querySelectorAll('#grid .ev-roll').forEach((roll) => {
+    if (roll.closest('.cell').matches(':hover')) return;
+    const pages = Number(roll.dataset.pages);
+    const next = (Number(roll.dataset.page) + 1) % pages;
+    roll.dataset.page = next;
+    roll.querySelectorAll('.ev-page').forEach((pg, i) => pg.classList.toggle('active', i === next));
+    const no = roll.parentElement.querySelector('.ev-page-no');
+    if (no) no.textContent = next + 1;
+  });
+}, 3000);
+
+// 날짜(숫자) 또는 "전체" 클릭 → 그날 전체 목록 팝업
+$('#grid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-day]');
+  if (b) openDay(b.dataset.day);
+});
+
+function openDay(date) {
+  const evs = lastDayEvents.get(date) || [];
+  const d = new Date(`${date}T00:00:00`);
+  $('#day-title').textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]})${evs.length ? ` · ${evs.length}건` : ''}`;
+  $('#day-list').innerHTML = evs.length ? evs.map((ev) => chipHtml(ev, true)).join('') : '<p class="muted">표시할 항목이 없습니다.</p>';
+  $('#day-dlg').showModal();
+}
+$('#day-close').addEventListener('click', () => $('#day-dlg').close());
 
 /* ---------- 출퇴근 툴팁 ---------- */
 
