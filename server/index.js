@@ -351,6 +351,26 @@ app.post('/api/punch/out', requireLogin, (req, res) => {
   });
 });
 
+// [임시 진단] 내 근태 결재 요청 목록(연장근무 신청 사유 확인용) 응답 형식 저장 - 확인 후 삭제
+app.get('/api/debug/approval', requireLogin, async (req, res) => {
+  const out = {};
+  for (const q of ['', '?page=1', '?page=1&limit=20', '?page=1&limit=20&status=all&type=all']) {
+    const r = await req.gw.hr(`/timecard/user/approval/list${q}`);
+    out[q || '(없음)'] = { status: r.status, data: r.data || (r.text || '').slice(0, 500) };
+  }
+  const list = Object.values(out).map((x) => x.data && x.data.data).find((d) => d && (d.rows || Array.isArray(d)));
+  const first = list && (list.rows || list)[0];
+  const id = first && (first.id || first.approval_id || first.tc_id);
+  if (id) {
+    for (const q of [`?id=${id}`, `/${id}`]) {
+      const r = await req.gw.hr(`/timecard/user/approval/get${q}`);
+      out[`get${q}`] = { status: r.status, data: r.data || (r.text || '').slice(0, 500) };
+    }
+  }
+  fs.writeFileSync(path.join(__dirname, '..', 'tools', 'debug-approval.json'), JSON.stringify(out, null, 1));
+  res.type('text').send('저장 완료. 이 창을 닫고 Claude에게 알려주세요.');
+});
+
 /* ---------- 관리자 ---------- */
 
 // 관리자 인증 / 해제 (세션 단위)

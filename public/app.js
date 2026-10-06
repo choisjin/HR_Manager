@@ -319,6 +319,7 @@ function adminDays(records) {
               status: overtimeLook(r).status,
               note: [r.range ? `시간대 ${r.range}` : '', overtimeUseNote(r)].filter(Boolean).join(' · '),
               memo: r.reason,
+              showMemo: true,
             },
           }
         : {
@@ -403,7 +404,7 @@ function overtimeChip(ev, date) {
     title: `연장 +${m[1]}`,
     badge: look.badge,
     color: look.color,
-    tip: { label: '연장근무', real: m[1], status: look.status, note: [`시간대 ${m[2]}`, overtimeUseNote(item)].filter(Boolean).join(' · '), memo: item?.reason },
+    tip: { label: '연장근무', real: m[1], status: look.status, note: [`시간대 ${m[2]}`, overtimeUseNote(item)].filter(Boolean).join(' · '), memo: item?.reason, showMemo: true },
   };
 }
 
@@ -482,6 +483,7 @@ function tipHtml(t) {
   if (t.time && t.time !== t.real) lines.push(`<span class="muted">인정 시간 ${esc(t.time)}</span>`);
   if (t.note) lines.push(`<span class="muted">${esc(t.note)}</span>`);
   if (t.memo) lines.push(`<div class="tip-memo">사유: ${esc(t.memo)}</div>`);
+  else if (t.showMemo) lines.push('<div class="tip-memo muted">사유 없음</div>'); // 연장근무는 사유 줄을 항상 표시
   return lines.join('<br>');
 }
 
