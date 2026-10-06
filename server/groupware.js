@@ -51,6 +51,12 @@ function earlyLeaveMemo(date) {
   return `${y}년 ${m}월 ${d}일 추가 근무 건에 대한 조퇴`;
 }
 
+// 지각 사유 문구: "2026년 06월 29일 추가 근무 건에 대한 지각"
+function lateMemo(date) {
+  const [y, m, d] = date.split('-');
+  return `${y}년 ${m}월 ${d}일 추가 근무 건에 대한 지각`;
+}
+
 // 조퇴 사유에서 연장근무 발생일 추출 → ['2026-06-29', ...]
 function overtimeDatesInMemo(memo) {
   const out = [];
@@ -229,9 +235,11 @@ class GroupwareClient {
   // 주어진 달들의 연장근무 + 조퇴 내역 (회사 데이터만)
   // items: 연장근무 { key, date, range, minutes, reason }
   // early: 조퇴 { date, time, minutes(부족 시간), memo, overtimeDates(사유에 적힌 연장근무 발생일) }
+  // late: 지각 { date, time, memo, overtimeDates(출근 메모에 적힌 연장근무 발생일) }
   async overtimeMonths(months) {
     const overtimes = [];
     const earlyDays = [];
+    const lateDays = [];
     let expired = false;
     await mapLimit(months, 4, async (month) => {
       const { status, data } = await this.calendarCached(month);
@@ -241,6 +249,7 @@ class GroupwareClient {
           const ot = /^연장근무\s*신청\s*(.+?)\s*\((.+)\)\s*$/.exec(ev.title || '');
           if (ot) overtimes.push({ date: day.date, minutes: labelToMinutes(ot[1]), range: ot[2], reason: cleanMemo(ev.memo) });
           if (ev.type === 'process' && /^조퇴/.test(ev.title || '')) earlyDays.push(day.date);
+          if (ev.type === 'process' && /^지각/.test(ev.title || '')) lateDays.push(day.date);
         }
       }
     });
@@ -273,11 +282,23 @@ class GroupwareClient {
       }
     });
 
+    const late = [];
+    await mapLimit(lateDays, 4, async (date) => {
+      try {
+        const p = await this.dayPunch(date);
+        const inn = (p && p.in) || {};
+        late.push({ date, time: inn.real_time || inn.time || '', memo: inn.memo || '', overtimeDates: overtimeDatesInMemo(inn.memo) });
+      } catch (e) {
+        console.error(`day ${date} error:`, e.message);
+      }
+    });
+
     const items = overtimes
       .sort((a, b) => a.date.localeCompare(b.date) || a.range.localeCompare(b.range))
       .map((o) => ({ key: overtimeKey(o), date: o.date, range: o.range, minutes: o.minutes, reason: o.reason }));
     early.sort((a, b) => a.date.localeCompare(b.date));
-    return { items, early };
+    late.sort((a, b) => a.date.localeCompare(b.date));
+    return { items, early, late };
   }
 
   // 입사월(또는 fromMonth)부터 이번 달까지 전부
@@ -312,6 +333,11 @@ class GroupwareClient {
     return this.hr('/timecard/punch/in', { method: 'POST', form: { nightwork: 0 } });
   }
 
+  // 출근/퇴근 기록에 사유 저장 (지각 사유 등)
+  saveMemo(id, memo) {
+    return this.hr('/timecard/punch/memo', { method: 'POST', form: { id, memo } });
+  }
+
   // 일반 퇴근: { nightwork, id? } / 조퇴 확정: { id, memo, leaving_early: 1, confirm: 1 }
   clockOut({ id, memo, leavingEarly } = {}) {
     const form = leavingEarly ? { id, memo: memo || '', leaving_early: 1, confirm: 1 } : { nightwork: 0 };
@@ -329,4 +355,4 @@ class GroupwareClient {
   }
 }
 
-module.exports = { GroupwareClient, earlyLeaveMemo, overtimeKey };
+module.exports = { GroupwareClient, earlyLeaveMemo, lateMemo, overtimeKey };

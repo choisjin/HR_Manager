@@ -449,3 +449,11 @@ button.ot-badge:disabled { opacity: .5; cursor: wait; }
 .ev-badge.used { background: #8392a5; color: #fff; }
 .ev-badge.late { background: #5b47fb; color: #fff; }
 .ev.ev-used { color: #8392a5 !important; }
+
+/* 지각 출근 */
+.late-dlg { width: min(420px, calc(100vw - 32px)); }
+.late-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.late-field textarea, .late-field select {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 6px; font: inherit; font-weight: normal; color: var(--text); background: var(--card); resize: none;
+}
+.late-hint { font-size: 12px; margin: -4px 0 14px; }

@@ -4,3 +4,4 @@ tools/capture.jsonl
 data/
 .tmp/
 *.log
+tools/debug-*.json

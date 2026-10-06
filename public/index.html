@@ -255,6 +255,23 @@
   </form>
 </dialog>
 
+<!-- 지각 출근: 사유 + 사용할 연장근무 -->
+<dialog id="late-dlg" class="modal late-dlg">
+  <form method="dialog">
+    <h3>지각 출근</h3>
+    <p id="late-text"></p>
+    <label class="late-field">지각 사유<textarea id="late-reason" rows="2" placeholder="지각 사유를 입력하세요"></textarea></label>
+    <label class="late-field">연장근무 사용
+      <select id="late-ot"></select>
+    </label>
+    <p class="muted late-hint">연장근무를 고르면 그 연장근무가 <b>사용</b>으로 바뀌고, 고르지 않으면 <b>지각</b>으로 처리됩니다.</p>
+    <div class="modal-buttons">
+      <button value="cancel" class="btn-outline" formnovalidate>취소</button>
+      <button value="ok" class="btn-primary">출근</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- 조퇴: 사용할 연장근무 선택 -->
 <dialog id="ot-pick" class="modal ot-pick">
   <h3>조퇴 - 사용할 연장근무 선택</h3>

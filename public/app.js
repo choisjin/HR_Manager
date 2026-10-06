@@ -374,6 +374,13 @@ function punchChip(kind, p, shortfall = 0) {
 }
 
 // "연장근무 신청 1시간 7분 (17:30~18:37)" → 칩 "연장 +1시간 7분", 툴팁에 시간대
+// "1시간 7분" → 67
+function otMinutes(label) {
+  const h = /(\d+)\s*시간/.exec(label);
+  const m = /(\d+)\s*분/.exec(label);
+  return (h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0);
+}
+
 // 연장근무 사용 상태별 표시: 미사용(주황) / 사용(회색 ✓) / 당일 지각분(보라 ✓) - 칩 맨 앞 배지로 (글자가 잘려도 보이게)
 const OT_BADGE = {
   unused: '<span class="ev-badge unused">미사용</span>',
@@ -390,6 +397,7 @@ function overtimeLook(item) {
 function overtimeUseNote(item) {
   if (!item || item.status !== '사용') return '';
   if (item.usedBy === 'early') return `${item.usedFor} 조퇴에 사용`;
+  if (item.usedBy === 'tardy') return `${item.usedFor} 지각에 사용`;
   if (item.usedKind === 'late') return `${item.usedOn} 당일 지각분`;
   return item.usedOn ? `${item.usedOn} 사용 (소급)` : '사용 (소급)';
 }
@@ -399,6 +407,10 @@ function overtimeChip(ev, date) {
   const m = /^연장근무\s*신청\s*(.+?)\s*\((.+)\)\s*$/.exec(ev.title || '');
   if (!m) return null;
   const item = otState.items.find((o) => o.key === `${date} ${m[2]}`);
+  if (!item && otMinutes(m[1]) < 30) {
+    // 30분 미만은 추가근무로 인정 안 됨 (내역에도 없음) → 흐리게
+    return { title: `연장 +${m[1]}`, color: '#C0CCDA', tip: { label: '연장근무', real: m[1], note: `시간대 ${m[2]} · 30분 미만 (추가근무 미인정)` } };
+  }
   const look = overtimeLook(item);
   return {
     title: `연장 +${m[1]}`,
@@ -669,6 +681,7 @@ function renderOvertime() {
 
 function statusTip(o) {
   if (o.usedBy === 'early') return `${o.usedFor} 조퇴에 사용`;
+  if (o.usedBy === 'tardy') return `${o.usedFor} 지각에 사용`;
   if (o.usedKind === 'late') return `${o.usedOn} 당일 지각분 (소급 처리, 누르면 미사용으로)`;
   if (o.usedBy === 'manual') return `${o.usedOn ? `${o.usedOn} 사용 ` : ''}(소급 처리, 누르면 미사용으로)`;
   return '누르면 사용으로 변경 (사용일 지정 / 당일 지각분)';
@@ -680,10 +693,11 @@ $('#ot-rows').addEventListener('click', async (e) => {
   if (!btn) return;
   const item = otState.items.find((o) => o.key === btn.dataset.key);
   if (!item) return;
-  if (item.usedBy === 'early') {
+  if (item.usedBy === 'early' || item.usedBy === 'tardy') {
+    const what = item.usedBy === 'early' ? '조퇴' : '지각';
     return modal({
       title: '변경할 수 없음',
-      text: `${item.usedFor} 조퇴에 사용된 연장근무입니다.\n조퇴에 사용되어 정정신청으로 변경하세요.`,
+      text: `${item.usedFor} ${what}에 사용된 연장근무입니다.\n${what}에 사용되어 정정신청으로 변경하세요.`,
       alert: true,
     });
   }
@@ -983,10 +997,50 @@ async function punchRequest(path, body) {
 
 $('#btn-in').addEventListener('click', async () => {
   const now = new Date().toTimeString().slice(0, 5);
-  if (!(await modal({ title: '출근', text: `지금(${now}) 출근 처리할까요?`, okText: '출근' }))) return;
-  const res = await punchRequest('/api/punch/in');
+  const start = punch?.schedule?.start_time || '08:30';
+  const lateBy = toMin(now) - toMin(start);
+  let body = {};
+  if (lateBy > 0 && !punch?.schedule?.vacation) {
+    // 출근 시간(08:30)을 넘기면(08:31부터) 지각 사유 + 사용할 연장근무 선택
+    const r = await askLate(lateBy, start);
+    if (!r) return;
+    body = { memo: r.reason, overtimeDate: r.item?.date };
+  } else if (!(await modal({ title: '출근', text: `지금(${now}) 출근 처리할까요?`, okText: '출근' }))) return;
+  const res = await punchRequest('/api/punch/in', body);
   if (res) await afterPunch(res);
 });
+
+// 지각 출근 창: 사유 입력 + 미사용 연장근무 선택(지각한 시간과 가장 비슷한 건 추천) → { reason, item } / 취소 null
+function askLate(lateBy, start) {
+  const dlg = $('#late-dlg');
+  const items = otState.items.filter((o) => o.status === '미사용').sort((a, b) => b.date.localeCompare(a.date));
+  let best = null;
+  for (const o of items) {
+    const d = Math.abs(o.minutes - lateBy);
+    const bd = best && Math.abs(best.minutes - lateBy);
+    if (!best || d < bd || (d === bd && o.minutes >= lateBy && best.minutes < lateBy)) best = o;
+  }
+  $('#late-text').textContent = `출근 시간(${start})보다 ${fmtMinutes(lateBy)} 늦었습니다.`;
+  $('#late-reason').value = '';
+  $('#late-ot').innerHTML =
+    '<option value="">선택 안 함 (지각 처리)</option>' +
+    items
+      .map((o) => `<option value="${esc(o.key)}">${o.date} · ${fmtMinutes(o.minutes)}${o.reason ? ` · ${esc(o.reason)}` : ''}${o === best ? ' (추천)' : ''}</option>`)
+      .join('');
+  dlg.returnValue = '';
+  dlg.showModal();
+  $('#late-reason').focus();
+  return new Promise((resolve) => {
+    dlg.addEventListener(
+      'close',
+      () => {
+        if (dlg.returnValue !== 'ok') return resolve(null);
+        resolve({ reason: $('#late-reason').value.trim(), item: items.find((o) => o.key === $('#late-ot').value) || null });
+      },
+      { once: true }
+    );
+  });
+}
 
 const toMin = (hhmm) => {
   const [h, m] = String(hhmm || '').split(':').map(Number);

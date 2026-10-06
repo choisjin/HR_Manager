@@ -95,12 +95,13 @@ async function exportExcel(monthList) {
         const date = `${month}-${String(d).padStart(2, '0')}`;
         const lines = [];
         for (const r of mine.filter((x) => x.date === date)) {
+          // 칸 내용: 상태(줄바꿈)시간 - 연장근무는 미사용/사용/지각분 + 시간, 조퇴는 조퇴 + 부족 시간
           if (r.type === 'ot') {
             ot += r.minutes;
-            lines.push(`연장 +${fmt(r.minutes)}${r.usedKind === 'late' ? ' (지각분)' : r.status === '사용' ? ' (사용)' : ''}`);
+            lines.push(`${r.usedKind === 'late' ? '지각분' : r.status}\n${fmt(r.minutes)}`);
           } else {
             early += r.minutes;
-            lines.push(`조퇴 ${r.time}${r.minutes ? ` (-${fmt(r.minutes)})` : ''}`);
+            lines.push(`조퇴\n${r.minutes ? `-${fmt(r.minutes)}` : r.time}`);
           }
         }
         row.push(lines.join('\n'));
@@ -109,27 +110,31 @@ async function exportExcel(monthList) {
       ws.addRow(row);
     }
 
-    // 서식
-    ws.getColumn(1).width = 12;
-    for (let c = 2; c <= days + 1; c++) ws.getColumn(c).width = 13;
-    ws.getColumn(days + 2).width = 10;
-    ws.getColumn(days + 3).width = 10;
+    // 서식: 칸 너비를 내용에 맞게 좁게
+    ws.getColumn(1).width = 8;
+    for (let c = 2; c <= days + 1; c++) ws.getColumn(c).width = 6.5;
+    ws.getColumn(days + 2).width = 8;
+    ws.getColumn(days + 3).width = 8;
     ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
     const border = { style: 'thin', color: { argb: 'FFD0D7E2' } };
     ws.eachRow((row, rowNo) => {
       row.eachCell({ includeEmpty: true }, (cell, colNo) => {
         cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        cell.font = { size: 9, ...(cell.font || {}) };
         cell.border = { top: border, left: border, bottom: border, right: border };
         if (rowNo === 1) {
-          cell.font = { bold: true };
+          cell.font = { bold: true, size: 9 };
           const dow = colNo >= 2 && colNo <= days + 1 ? new Date(y, m - 1, colNo - 1).getDay() : -1;
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: dow === 0 ? 'FFFDE2E2' : dow === 6 ? 'FFE2ECFD' : 'FFF1F3F7' } };
         } else if (colNo >= 2 && colNo <= days + 1 && cell.value) {
           const text = String(cell.value);
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: text.includes('조퇴') ? 'FFE6F6EE' : 'FFFFF1E6' } };
+          const argb = text.includes('조퇴') ? 'FFE6F6EE' : text.includes('미사용') ? 'FFFFF1E6' : text.includes('지각분') ? 'FFEEEBFE' : 'FFF1F3F7';
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
         }
       });
-      if (rowNo === 1) row.height = 32;
+      // 한 칸에 여러 건이면 줄 수만큼 높이
+      const maxLines = Math.max(1, ...row.values.slice(2, days + 2).map((v) => String(v || '').split('\n').length));
+      row.height = rowNo === 1 ? 30 : Math.max(30, 13 * maxLines);
     });
   }
   if (!monthList.length) wb.addWorksheet('내역 없음');

@@ -13,7 +13,7 @@ const marks = require('./marks');
 const credentials = require('./credentials');
 const overtimeStore = require('./overtime-store');
 const admin = require('./admin');
-const { earlyLeaveMemo } = require('./groupware');
+const { earlyLeaveMemo, lateMemo } = require('./groupware');
 
 const HTTPS_PORT = Number(process.env.HTTPS_PORT || 3443); // 실제 서비스 (https)
 const PORT = Number(process.env.PORT || 3000); // http: 인증서 설치 안내(/setup) + https 로 이동
@@ -167,11 +167,11 @@ function syncOvertime(gw, full = false) {
     .catch(() => {})
     .then(async () => {
       const cache = overtimeStore.loadCache(userId);
-      const needFull = full || !cache || !Array.isArray(cache.early);
+      const needFull = full || !cache || !Array.isArray(cache.early) || !Array.isArray(cache.late); // 예전 형식이면 전부
       const fresh = needFull ? await gw.overtimeHistory() : await gw.overtimeRecent(2);
       if (fresh.expired) return fresh;
       const saved = needFull ? overtimeStore.saveFull(userId, gw.user.name, fresh) : overtimeStore.mergeMonths(userId, gw.user.name, fresh);
-      console.log(`[sync] ${userId} ${needFull ? '전체' : '최근 2개월'} 연장근무 ${fresh.items.length}건, 조퇴 ${fresh.early.length}건`);
+      console.log(`[sync] ${userId} ${needFull ? '전체' : '최근 2개월'} 연장근무 ${fresh.items.length}건, 조퇴 ${fresh.early.length}건, 지각 ${fresh.late.length}건`);
       return saved;
     })
     .finally(() => {
@@ -216,11 +216,12 @@ app.post('/api/overtime/mark', requireLogin, async (req, res) => {
     }
     const item = data.items.find((o) => o.key === key);
     if (!item) return res.status(404).json({ success: false, message: '연장근무 항목을 찾을 수 없습니다.' });
-    if (item.usedBy === 'early') {
+    if (item.usedBy === 'early' || item.usedBy === 'tardy') {
+      const what = item.usedBy === 'early' ? '조퇴' : '지각';
       return res.status(409).json({
         success: false,
-        code: 'used_by_early',
-        message: `${item.usedFor} 조퇴에 사용된 연장근무입니다.\n조퇴에 사용되어 정정신청으로 변경하세요.`,
+        code: `used_by_${item.usedBy}`,
+        message: `${item.usedFor} ${what}에 사용된 연장근무입니다.\n${what}에 사용되어 정정신청으로 변경하세요.`,
       });
     }
     if (used && kind === 'late') usedOn = item.date; // 당일 지각분은 연장근무한 그날 사용
@@ -331,9 +332,24 @@ app.get('/api/vacation', requireLogin, (req, res) =>
 
 app.get('/api/punch/status', requireLogin, (req, res) => relay(req, res, () => req.gw.punchStatus()));
 
+// 출근. 지각이면 memo(지각 사유), overtimeDate(사용할 연장근무 발생일)를 함께 받아 출근 기록에 사유 저장
+// 연장근무를 고르면 사유에 "2026년 06월 29일 추가 근무 건에 대한 지각" 을 붙여 그 연장근무를 사용 처리
 app.post('/api/punch/in', requireLogin, (req, res) => {
-  console.log(`[punch] 출근 요청 ${new Date().toLocaleString('ko-KR')}`);
-  relay(req, res, () => req.gw.clockIn());
+  const reason = String((req.body && req.body.memo) || '').trim().slice(0, 500);
+  const overtimeDate = String((req.body && req.body.overtimeDate) || '');
+  const useOvertime = /^\d{4}-\d{2}-\d{2}$/.test(overtimeDate);
+  const memo = [reason, useOvertime ? lateMemo(overtimeDate) : ''].filter(Boolean).join(' / ');
+  console.log(`[punch] 출근 요청${memo ? `(지각 사유: ${memo})` : ''} ${new Date().toLocaleString('ko-KR')}`);
+  relay(req, res, async () => {
+    const r = await req.gw.clockIn();
+    const inId = r.data && r.data.success && r.data.data && r.data.data.punch && r.data.data.punch.in && r.data.data.punch.in.id;
+    if (memo && inId != null) {
+      const m = await req.gw.saveMemo(inId, memo);
+      if (!(m.data && m.data.success)) r.data.message = `${r.data.message || '출근 처리되었습니다.'} (지각 사유 저장 실패: ${(m.data && m.data.message) || m.status})`;
+    }
+    if (r.data && r.data.success) syncOvertime(req.gw).catch((e) => console.error('[sync] 출근 후 실패:', e.message));
+    return r;
+  });
 });
 
 app.post('/api/punch/out', requireLogin, (req, res) => {
@@ -366,6 +382,21 @@ app.get('/api/debug/approval', requireLogin, async (req, res) => {
       const r = await req.gw.hr(`/timecard/user/approval/get${q}`);
       out[`get${q}`] = { status: r.status, data: r.data || (r.text || '').slice(0, 500) };
     }
+  }
+  // 연장근무가 있었던 최근 날짜 3개: 그날 달력 원본 항목(따로 된 사유 라벨이 있는지) + 하루 상세(출퇴근·변경 기록)
+  const cache = overtimeStore.loadCache(req.gw.user.id);
+  const dates = [...new Set(((cache && cache.items) || []).map((o) => o.date))].sort().slice(-3);
+  out.overtimeDays = {};
+  for (const date of dates) {
+    const cal = await req.gw.calendar(date.slice(0, 7));
+    const day = await req.gw.hr(`/timecard/user/status/day?day=${date}`);
+    const d = day.data && day.data.data;
+    out.overtimeDays[date] = {
+      calendarEvents: ((cal.data && cal.data.data) || []).find((x) => x.date === date) || null,
+      punch: d && d.punch,
+      log: d && d.log,
+      timeline: d && d.timeline,
+    };
   }
   fs.writeFileSync(path.join(__dirname, '..', 'tools', 'debug-approval.json'), JSON.stringify(out, null, 1));
   res.type('text').send('저장 완료. 이 창을 닫고 Claude에게 알려주세요.');
